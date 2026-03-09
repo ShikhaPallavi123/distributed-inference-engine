@@ -1,0 +1,62 @@
+name: CI/CD — Distributed Inference Engine
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-backend:
+    name: Test Flask API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/api/requirements.txt
+          pip install pytest
+
+      - name: Run tests
+        run: pytest backend/tests/ -v
+
+  test-frontend:
+    name: Build React Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install and build
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build
+
+  docker-build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t distributed-inference-engine:${{ github.sha }} .
+
+      - name: Smoke test container
+        run: |
+          docker run -d -p 5000:5000 --name api distributed-inference-engine:${{ github.sha }}
+          sleep 5
+          curl -f http://localhost:5000/health
+          docker stop api
